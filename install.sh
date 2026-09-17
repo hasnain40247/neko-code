@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 
-REPO="hasnain40247/lotus"
+REPO="hasnain40247/neko-code"
 BIN_NAME="neko"
 INSTALL_DIR="/usr/local/bin"
 
