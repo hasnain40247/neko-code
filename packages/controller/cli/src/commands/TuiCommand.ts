@@ -200,7 +200,31 @@ export const TuiCommand: CommandModule<object, TuiArgs> = {
       }
 
       // Register QuestionTool with a shared in-process store
-      const questionStore = new QuestionStore()
+      const questionStore = new QuestionStore({
+        onAsk: (req) =>
+          broadcastSSE({
+            directory: cwd,
+            payload: { id: req.id, type: "question.asked", properties: req },
+          }),
+        onReply: (req, answers) =>
+          broadcastSSE({
+            directory: cwd,
+            payload: {
+              id: `${req.id}_reply`,
+              type: "question.replied",
+              properties: { sessionID: req.sessionID, requestID: req.id, answers },
+            },
+          }),
+        onReject: (req) =>
+          broadcastSSE({
+            directory: cwd,
+            payload: {
+              id: `${req.id}_reject`,
+              type: "question.rejected",
+              properties: { sessionID: req.sessionID, requestID: req.id },
+            },
+          }),
+      })
       await rt.runPromise(
         toolRegistry.register({ question: QuestionTool.makeQuestionTool(questionStore) }),
       ).catch(() => {})

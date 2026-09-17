@@ -965,6 +965,17 @@ function createStreamingProjector(sessionID: string, directory: string) {
               state: { status: "running", input: data.input ?? {}, time: { start: startMs } },
             },
           })
+          // When the question tool is called, emit question.asked so the TUI
+          // shows the QuestionPrompt. Use callID as requestID so reply/reject
+          // can route back to the blocked Effect fiber via QuestionStore.
+          if (data.tool === "question" && data.input?.questions) {
+            bcast("question.asked", {
+              id: callID,
+              sessionID,
+              questions: data.input.questions,
+              tool: { messageID: msgID, callID },
+            })
+          }
           break
         }
 
@@ -1007,6 +1018,10 @@ function createStreamingProjector(sessionID: string, directory: string) {
               },
             },
           })
+          // Clear question from TUI store if this was a question tool call
+          if (toolNames.get(callID) === "question") {
+            bcast("question.replied", { sessionID, requestID: callID, answers: [] })
+          }
           break
         }
 
@@ -1027,6 +1042,10 @@ function createStreamingProjector(sessionID: string, directory: string) {
               },
             },
           })
+          // Clear question from TUI store if the question tool failed/was rejected
+          if (toolNames.get(callID) === "question") {
+            bcast("question.rejected", { sessionID, requestID: callID })
+          }
           break
         }
 
@@ -1724,6 +1743,24 @@ function handleRequest(
     })()
   }
   if (pathname === "/question" && method === "GET") return json([])
+  const questionReplyMatch = pathname.match(/^\/question\/([^/]+)\/reply$/)
+  if (questionReplyMatch && method === "POST") {
+    const requestID = decodeURIComponent(questionReplyMatch[1]!)
+    return (async () => {
+      let body: any = {}
+      try { body = await req.json() } catch {}
+      await services.replyQuestion(requestID, body.answers ?? []).catch(() => {})
+      return json({})
+    })()
+  }
+  const questionRejectMatch = pathname.match(/^\/question\/([^/]+)\/reject$/)
+  if (questionRejectMatch && method === "POST") {
+    const requestID = decodeURIComponent(questionRejectMatch[1]!)
+    return (async () => {
+      await services.rejectQuestion(requestID).catch(() => {})
+      return json({})
+    })()
+  }
 
   // ── CLI verbs — shell subcommands exposed by the `neko` binary.
   // These are yargs commands you run from a terminal, not TUI palette actions.

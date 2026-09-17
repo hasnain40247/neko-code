@@ -27,17 +27,24 @@ export interface QuestionRequestInfo {
   readonly tool: { readonly messageID: string; readonly callID: string }
 }
 
+export interface QuestionStoreCallbacks {
+  readonly onAsk?: (req: QuestionRequestInfo) => void
+  readonly onReply?: (req: QuestionRequestInfo, answers: ReadonlyArray<ReadonlyArray<string>>) => void
+  readonly onReject?: (req: QuestionRequestInfo) => void
+}
+
 export class QuestionStore implements IQuestionService {
   private readonly pending = new Map<string, PendingEntry>()
+  constructor(private readonly cb: QuestionStoreCallbacks = {}) {}
 
   ask(input: QuestionAskInput): Effect.Effect<{ answers: ReadonlyArray<Question.Answer> }> {
     return Effect.callback<{ answers: ReadonlyArray<Question.Answer> }>((resume) => {
-      const id = crypto.randomUUID()
+      // Use the tool callID as the request ID so the event projector can emit
+      // question.asked events with the same ID via session.next.tool.called events.
+      const id = input.tool.callID
+      const req: QuestionRequestInfo = { id, sessionID: input.sessionID, questions: input.questions, tool: input.tool }
       this.pending.set(id, {
-        id,
-        sessionID: input.sessionID,
-        questions: input.questions,
-        tool: input.tool,
+        ...req,
         resolve: (answers) => {
           this.pending.delete(id)
           resume(Effect.succeed({ answers }))
@@ -47,6 +54,7 @@ export class QuestionStore implements IQuestionService {
           resume(Effect.succeed({ answers: [] as ReadonlyArray<Question.Answer> }))
         },
       })
+      this.cb.onAsk?.(req)
     })
   }
 
@@ -57,10 +65,18 @@ export class QuestionStore implements IQuestionService {
   }
 
   reply(requestID: string, answers: ReadonlyArray<ReadonlyArray<string>>): void {
-    this.pending.get(requestID)?.resolve(answers as ReadonlyArray<Question.Answer>)
+    const entry = this.pending.get(requestID)
+    if (!entry) return
+    const req: QuestionRequestInfo = { id: entry.id, sessionID: entry.sessionID, questions: entry.questions, tool: entry.tool }
+    entry.resolve(answers as ReadonlyArray<Question.Answer>)
+    this.cb.onReply?.(req, answers)
   }
 
   reject(requestID: string): void {
-    this.pending.get(requestID)?.reject()
+    const entry = this.pending.get(requestID)
+    if (!entry) return
+    const req: QuestionRequestInfo = { id: entry.id, sessionID: entry.sessionID, questions: entry.questions, tool: entry.tool }
+    entry.reject()
+    this.cb.onReject?.(req)
   }
 }

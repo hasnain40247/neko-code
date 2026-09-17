@@ -534,8 +534,19 @@ function ToolRow(props: {
       const label = `${sub}${desc}`.trim()
       return label || "spawning subagent"
     }
-    const s = typeof inp === "string" ? inp : JSON.stringify(inp)
-    return s.length > 60 ? s.slice(0, 60) + "…" : s
+    // For the question tool, show the actual question text(s) instead of raw JSON.
+    if (name() === "question" && typeof inp === "object") {
+      const qs = (inp as { questions?: Array<{ question?: string }> }).questions
+      if (Array.isArray(qs) && qs.length) {
+        return qs.map(q => q.question ?? "").filter(Boolean).join(" / ")
+      }
+    }
+    // For bash/shell commands, show just the command string.
+    if ((name() === "bash" || name() === "shell") && typeof inp === "object") {
+      const cmd = (inp as { command?: string }).command
+      if (typeof cmd === "string") return cmd
+    }
+    return typeof inp === "string" ? inp : JSON.stringify(inp)
   }
   const output = () => {
     const o = props.part.state?.output?.trim() ?? ""
@@ -800,6 +811,38 @@ function Chat(props: { args: Args }) {
     if (!req) return
     setPendingPermission(null)
     void sdk.client.permission.reply({ requestID: req.id, reply }).catch(() => {})
+  }
+
+  // Question prompt state
+  type PendingQuestion = {
+    id: string
+    sessionID: string
+    questions: Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiple?: boolean; custom?: boolean }>
+    tool?: { messageID: string; callID: string }
+  }
+  const [pendingQuestion, setPendingQuestion] = createSignal<PendingQuestion | null>(null)
+  const [questionSelected, setQuestionSelected] = createSignal(0)
+  const [questionAnswers, setQuestionAnswers] = createSignal<string[][]>([[]])
+  const [questionTab, setQuestionTab] = createSignal(0)
+  // Custom text input mode: when user selects the "Type your own" slot
+  const [questionCustomMode, setQuestionCustomMode] = createSignal(false)
+  const [questionCustomText, setQuestionCustomText] = createSignal("")
+
+  function replyQuestion(answers: string[][]) {
+    const req = pendingQuestion()
+    if (!req) return
+    setPendingQuestion(null)
+    setQuestionCustomMode(false)
+    setQuestionCustomText("")
+    void sdk.client.question.reply({ requestID: req.id, answers, directory: sdk.directory }).catch(() => {})
+  }
+  function rejectQuestion() {
+    const req = pendingQuestion()
+    if (!req) return
+    setPendingQuestion(null)
+    setQuestionCustomMode(false)
+    setQuestionCustomText("")
+    void sdk.client.question.reject({ requestID: req.id, directory: sdk.directory }).catch(() => {})
   }
   const togglePermissionMode = () => {
     setPermissionMode((m) => (m === "auto" ? "normal" : "auto"))
@@ -2221,15 +2264,98 @@ function Chat(props: { args: Args }) {
         if (key.name === "n") { replyPermission("reject"); key.preventDefault(); return }
         if (key.name === "escape") {
           const sid = sessionID()
-          // Clear the local banner immediately so the user can type; the
-          // server-side interrupt below rejects the pending request AND flips
-          // the abort flag so no follow-up turn fires.
           setPendingPermission(null)
           if (sid) void sdk.client.session.abort({ sessionID: sid }).catch(() => {})
           key.preventDefault()
           return
         }
-        // Swallow other keys so they don't leak into the input while pending.
+        key.preventDefault()
+        return
+      }
+
+      // Question prompt: navigate options, pick with enter/number, dismiss with esc.
+      if (pendingQuestion()) {
+        const qReq = pendingQuestion()!
+        const tab = questionTab()
+        const q = qReq.questions[tab]
+        const opts = q?.options ?? []
+        // Always include a custom slot at the end (index = opts.length)
+        const CUSTOM_IDX = opts.length
+        const total = opts.length + 1
+
+        function pickOption(label: string) {
+          const answers = qReq.questions.map((_, i) => i === tab ? [label] : (questionAnswers()[i] ?? []))
+          if (qReq.questions.length === 1) {
+            replyQuestion([[label]])
+          } else {
+            setQuestionAnswers(answers)
+            if (tab < qReq.questions.length - 1) {
+              setQuestionTab(tab + 1); setQuestionSelected(0)
+            } else {
+              replyQuestion(answers)
+            }
+          }
+        }
+
+        // In custom text input mode: collect chars, backspace, enter to submit, esc to cancel
+        if (questionCustomMode()) {
+          if (key.name === "escape") {
+            setQuestionCustomMode(false)
+            setQuestionCustomText("")
+            key.preventDefault(); return
+          }
+          if (key.name === "return") {
+            const text = questionCustomText().trim()
+            if (text) pickOption(text)
+            setQuestionCustomMode(false)
+            setQuestionCustomText("")
+            key.preventDefault(); return
+          }
+          if (key.name === "backspace" || key.name === "delete") {
+            setQuestionCustomText((t) => t.slice(0, -1))
+            key.preventDefault(); return
+          }
+          // Collect printable characters
+          if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) {
+            setQuestionCustomText((t) => t + key.sequence)
+            key.preventDefault(); return
+          }
+          key.preventDefault(); return
+        }
+
+        if (key.name === "escape") { rejectQuestion(); key.preventDefault(); return }
+        if (key.name === "up" || key.name === "k") {
+          setQuestionSelected((s) => (s - 1 + total) % total)
+          key.preventDefault(); return
+        }
+        if (key.name === "down" || key.name === "j") {
+          setQuestionSelected((s) => (s + 1) % total)
+          key.preventDefault(); return
+        }
+        if (key.name === "return") {
+          const sel = questionSelected()
+          if (sel === CUSTOM_IDX) {
+            setQuestionCustomMode(true)
+            setQuestionCustomText("")
+          } else {
+            const opt = opts[sel]
+            if (opt) pickOption(opt.label)
+          }
+          key.preventDefault(); return
+        }
+        // Number keys: 1..opts.length pick options, last+1 opens custom
+        const num = parseInt(key.name, 10)
+        if (!isNaN(num) && num >= 1 && num <= total) {
+          if (num === total) {
+            setQuestionSelected(CUSTOM_IDX)
+            setQuestionCustomMode(true)
+            setQuestionCustomText("")
+          } else {
+            const opt = opts[num - 1]
+            if (opt) pickOption(opt.label)
+          }
+          key.preventDefault(); return
+        }
         key.preventDefault()
         return
       }
@@ -2458,6 +2584,20 @@ function Chat(props: { args: Args }) {
       if (payload.type === "permission.replied") {
         const p = payload.properties as { requestID?: string }
         if (pendingPermission()?.id === p.requestID) setPendingPermission(null)
+        return
+      }
+
+      if (payload.type === "question.asked") {
+        const req = payload.properties as PendingQuestion
+        setQuestionSelected(0)
+        setQuestionTab(0)
+        setQuestionAnswers(req.questions.map(() => []))
+        setPendingQuestion(req)
+        return
+      }
+      if (payload.type === "question.replied" || payload.type === "question.rejected") {
+        const p = payload.properties as { requestID?: string }
+        if (pendingQuestion()?.id === p.requestID) setPendingQuestion(null)
         return
       }
 
@@ -3039,6 +3179,56 @@ function Chat(props: { args: Args }) {
             </text>
           </box>
         )}
+      </Show>
+
+      {/* Question prompt */}
+      <Show when={pendingQuestion()}>
+        {(req) => {
+          const tab = () => questionTab()
+          const q = () => req().questions[tab()]
+          const opts = () => q()?.options ?? []
+          const sel = () => questionSelected()
+          const customIdx = () => opts().length
+          const isCustom = () => sel() === customIdx()
+          const inCustomMode = () => questionCustomMode()
+          return (
+            <box
+              flexShrink={0}
+              flexDirection="column"
+              paddingLeft={2}
+              paddingRight={2}
+              paddingTop={1}
+              paddingBottom={1}
+              backgroundColor={C_INPUT}
+            >
+              <text fg={C_ACCENT} wrapMode="word" attributes={TextAttributes.BOLD}>
+                {q()?.question ?? ""}
+              </text>
+              <For each={opts()}>
+                {(opt, i) => (
+                  <text fg={i() === sel() ? C_EGG : C_DIM} wrapMode="word">
+                    <span style={{ fg: i() === sel() ? C_ACCENT : C_DIM }}>{i() + 1}. </span>
+                    {opt.label}
+                    {opt.description ? <span style={{ fg: C_DIM }}>{" — " + opt.description}</span> : null}
+                  </text>
+                )}
+              </For>
+              {/* Always-visible custom slot */}
+              <text fg={isCustom() ? C_EGG : C_DIM} wrapMode="word">
+                <span style={{ fg: isCustom() ? C_ACCENT : C_DIM }}>{opts().length + 1}. </span>
+                <Show when={inCustomMode()} fallback={"Type your own answer"}>
+                  <span style={{ fg: C_EGG }}>{questionCustomText() || " "}</span>
+                  <span style={{ fg: C_ACCENT }}>{"█"}</span>
+                </Show>
+              </text>
+              <text fg={C_DIM}>
+                <Show when={inCustomMode()} fallback={"↑↓ select   return pick   esc dismiss"}>
+                  {"type answer   return submit   esc cancel"}
+                </Show>
+              </text>
+            </box>
+          )
+        }}
       </Show>
 
       {/* Input */}
