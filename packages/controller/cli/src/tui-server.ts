@@ -578,14 +578,38 @@ function anthropicProvider(): object {
   }
 }
 
-function ollamaProvider(): object {
+async function ollamaProvider(): Promise<object> {
+  let models: Record<string, object> = {}
+  let reachable = false
+  try {
+    const res = await fetch("http://localhost:11434/api/tags", {
+      signal: AbortSignal.timeout(2000),
+    })
+    if (res.ok) {
+      const data = (await res.json()) as { models?: Array<{ name: string }> }
+      reachable = true
+      for (const m of data.models ?? []) {
+        const id = m.name
+        models[id] = {
+          id,
+          name: id,
+          release: "local",
+          context: 128000,
+          limit: { context: 128000, output: 8192 },
+        }
+      }
+    }
+  } catch {
+    // Ollama not running or not installed
+  }
   return {
     id: "ollama",
     name: "Ollama",
     source: "local",
     env: [],
     options: {},
-    models: {},
+    models,
+    reachable,
   }
 }
 
@@ -607,18 +631,18 @@ function openaiProvider(): object {
   }
 }
 
-function providerListResponse(connectedIntegrations: string[] = []): object {
+async function providerListResponse(connectedIntegrations: string[] = []): Promise<object> {
   const ds = deepseekProvider() as any
   const ap = anthropicProvider() as any
   const oa = openaiProvider() as any
-  const ol = ollamaProvider() as any
+  const ol = (await ollamaProvider()) as any
   const all = [ds, ap, oa, ol]
   const connected = all
     .filter((p) => {
       if (p.id === "deepseek")  return Boolean(process.env.DEEPSEEK_API_KEY)  || connectedIntegrations.includes("deepseek")
       if (p.id === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY) || connectedIntegrations.includes("anthropic")
       if (p.id === "openai")    return Boolean(process.env.OPENAI_API_KEY)    || connectedIntegrations.includes("openai")
-      if (p.id === "ollama")    return true
+      if (p.id === "ollama")    return Boolean(p.reachable)
       return false
     })
     .map((p) => p.id)
@@ -1248,7 +1272,7 @@ function handleRequest(
   ) {
     return (async () => {
       const creds = await services.listCredentials().catch(() => [] as any[])
-      return json(providerListResponse(creds.map((c: any) => c.integrationID)))
+      return json(await providerListResponse(creds.map((c: any) => c.integrationID)))
     })()
   }
 
@@ -1266,7 +1290,7 @@ function handleRequest(
         await services.setProviderKey(providerID, key).catch(() => {})
       }
       const creds = await services.listCredentials().catch(() => [] as any[])
-      return json(providerListResponse(creds.map((c: any) => c.integrationID)))
+      return json(await providerListResponse(creds.map((c: any) => c.integrationID)))
     })()
   }
 

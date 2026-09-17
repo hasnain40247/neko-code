@@ -963,6 +963,16 @@ function Chat(props: { args: Args }) {
         ? data!.connected.filter((s): s is string => typeof s === "string")
         : []
       setModelsConnected(new Set<string>(connectedList))
+      // Populate Ollama models if Ollama is running.
+      const ollamaData = providers.find((p) => p.id === "ollama")
+      if (ollamaData && connectedList.includes("ollama")) {
+        const items: ModelsPaletteItem[] = Object.keys(ollamaData.models ?? {}).map((id) => ({
+          providerID: "ollama",
+          modelID: id,
+          label: id,
+        }))
+        setOllamaModelItems(items)
+      }
     } catch {
       // Provider list is best-effort; context % just won't show a percentage.
     }
@@ -1607,7 +1617,7 @@ function Chat(props: { args: Args }) {
   // Grouped model catalog. Add a new provider by pushing another group; the
   // heading is rendered from `heading` and each item's `providerID/modelID`
   // is what gets persisted to neko.json.
-  const MODEL_GROUPS: ModelsPaletteGroup[] = [
+  const STATIC_MODEL_GROUPS: ModelsPaletteGroup[] = [
     {
       providerID: "deepseek",
       heading: "deepseek",
@@ -1637,6 +1647,14 @@ function Chat(props: { args: Args }) {
     },
   ]
 
+  const [ollamaModelItems, setOllamaModelItems] = createSignal<ModelsPaletteItem[]>([])
+
+  const modelGroups = (): ModelsPaletteGroup[] => {
+    const om = ollamaModelItems()
+    if (om.length === 0) return STATIC_MODEL_GROUPS
+    return [...STATIC_MODEL_GROUPS, { providerID: "ollama", heading: "ollama", items: om }]
+  }
+
   const [modelsModalOpen, setModelsModalOpen] = createSignal(false)
   const [modelsItemIndex, setModelsItemIndex] = createSignal(0)
   const [modelsCurrentKey, setModelsCurrentKey] = createSignal<string | null>(null)
@@ -1663,13 +1681,13 @@ function Chat(props: { args: Args }) {
       const currentId = s?.model?.id
       if (!currentId) return
       const validIds = new Set(
-        MODEL_GROUPS.flatMap((g) => g.items.map((it) => it.modelID)),
+        modelGroups().flatMap((g) => g.items.map((it) => it.modelID)),
       )
       if (validIds.has(currentId)) return
       // Pick the target: config default (via modelsCurrentKey) if it's a known
       // model, otherwise the first item of the first group.
       const keyFromConfig = modelsCurrentKey()
-      const fallback = MODEL_GROUPS[0]?.items[0]
+      const fallback = modelGroups()[0]?.items[0]
       let targetProvider: string | undefined
       let targetModel: string | undefined
       if (keyFromConfig?.includes("/")) {
@@ -1694,12 +1712,12 @@ function Chat(props: { args: Args }) {
   })
 
   const modelsFlatItems = (): ModelsPaletteItem[] =>
-    MODEL_GROUPS.flatMap((g) => g.items.map(decorateItem))
+    modelGroups().flatMap((g) => g.items.map(decorateItem))
 
   const modelsRows = (): ModelsPaletteRow[] => {
     const rows: ModelsPaletteRow[] = []
     let itemIndex = 0
-    for (const group of MODEL_GROUPS) {
+    for (const group of modelGroups()) {
       rows.push({ kind: "heading", heading: group.heading, providerID: group.providerID })
       for (const it of group.items) {
         rows.push({ kind: "item", itemIndex, item: decorateItem(it) })
@@ -1720,11 +1738,26 @@ function Chat(props: { args: Args }) {
     let connectedSet = new Set<string>()
     try {
       const res = await sdk.client.provider.list({} as any).catch(() => null)
-      const data = res?.data as { connected?: string[] } | undefined
+      const data = res?.data as {
+        connected?: string[]
+        providers?: Array<{ id: string; models?: Record<string, unknown> }>
+      } | undefined
       const list: string[] = Array.isArray(data?.connected)
         ? data!.connected.filter((s): s is string => typeof s === "string")
         : []
       connectedSet = new Set<string>(list)
+      // Refresh Ollama model list each time the modal opens.
+      const ollamaData = (data?.providers ?? []).find((p) => p.id === "ollama")
+      if (ollamaData && list.includes("ollama")) {
+        const items: ModelsPaletteItem[] = Object.keys(ollamaData.models ?? {}).map((id) => ({
+          providerID: "ollama",
+          modelID: id,
+          label: id,
+        }))
+        setOllamaModelItems(items)
+      } else {
+        setOllamaModelItems([])
+      }
     } catch {
       connectedSet = new Set<string>()
     }
@@ -1773,8 +1806,8 @@ function Chat(props: { args: Args }) {
   function confirmModelsSelection() {
     const item = modelsFlatItems()[modelsItemIndex()]
     if (!item) return
-    // Route disconnected providers through the auth prompt first.
-    if (!item.connected) {
+    // Ollama is local — no API key needed, select directly even if not in connectedSet.
+    if (!item.connected && item.providerID !== "ollama") {
       setModelsPendingSelection(item)
       setModelsAuthPrompt({ providerID: item.providerID, providerLabel: item.providerID })
       inputEl?.setText("")
@@ -2058,7 +2091,7 @@ function Chat(props: { args: Args }) {
       const [providerID, id] = key.split("/")
       if (providerID && id) return { providerID, id }
     }
-    const fallback = MODEL_GROUPS[0]?.items[0]
+    const fallback = modelGroups()[0]?.items[0]
     return fallback
       ? { providerID: fallback.providerID, id: fallback.modelID }
       : { providerID: "deepseek", id: "deepseek-v4-flash" }

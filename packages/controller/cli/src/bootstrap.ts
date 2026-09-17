@@ -119,8 +119,12 @@ const multiProviderModelResolverLayer: Layer.Layer<ModelResolver> = Layer.succee
         return Effect.succeed(oa.model(modelId) as unknown as Model)
       }
 
-      // Default to Ollama for any other provider ID or unrecognized model.
-      const ol = OllamaProvider.configure()
+      // Ollama: explicit provider ID routes here too.
+      // Falls through from unknown providers as the local-inference default.
+      const ollamaBaseURL = process.env.OLLAMA_HOST
+        ? `${process.env.OLLAMA_HOST}/v1`
+        : undefined
+      const ol = OllamaProvider.configure(ollamaBaseURL ? { baseURL: ollamaBaseURL } : {})
       return Effect.succeed(ol.model(modelId) as unknown as Model)
     },
   }),

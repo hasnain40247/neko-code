@@ -13,21 +13,20 @@ import {
 export type SlashCommand = SlashCommandSchema.Info
 export type SkillEntry = { readonly name: string; readonly description: string }
 
-// Ordering in grouped mode: Active → Skills → To do. Alphabetical inside each.
+// Ordering in grouped mode: Active → Skills. Alphabetical inside each.
 const statusRank = (c: SlashCommand): number => {
-  if (c.status === "todo") return 2
   if (c.status === "skill") return 1
   return 0
 }
 
-/** Merge the static schema registry with runtime-discovered skills. */
+/** Merge the static schema registry with runtime-discovered skills, excluding todo placeholders. */
 function buildCommands(skills: readonly SkillEntry[]): SlashCommand[] {
   const skillCmds: SlashCommand[] = skills.map((s) => ({
     name: s.name,
     description: s.description || "Skill from ./skills or ~/.config/neko/skills",
     status: "skill" as const,
   }))
-  return [...SlashCommandSchema.registry, ...skillCmds]
+  return [...SlashCommandSchema.registry.filter((c) => c.status !== "todo"), ...skillCmds]
 }
 
 export function filterSlashCommands(
@@ -96,11 +95,9 @@ export function SlashPalette(props: {
     }
     const active: Row[] = []
     const skills: Row[] = []
-    const todo: Row[] = []
     cmds.forEach((cmd, i) => {
       const row = { kind: "cmd" as const, cmd, itemIndex: i }
-      if (cmd.status === "todo") todo.push(row)
-      else if (cmd.status === "skill") skills.push(row)
+      if (cmd.status === "skill") skills.push(row)
       else active.push(row)
     })
     const out: Row[] = []
@@ -111,10 +108,6 @@ export function SlashPalette(props: {
     if (skills.length > 0) {
       out.push({ kind: "heading", label: "Skills" })
       out.push(...skills)
-    }
-    if (todo.length > 0) {
-      out.push({ kind: "heading", label: "To do" })
-      out.push(...todo)
     }
     return out
   }
