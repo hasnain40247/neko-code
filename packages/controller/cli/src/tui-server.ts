@@ -510,14 +510,15 @@ const SWAGGER_HTML = (specUrl: string) => `<!DOCTYPE html>
 function sessionToSDK(info: any): object {
   const toMs = (dt: unknown): number => {
     if (typeof dt === "number") return dt
-    if (dt && typeof (dt as any).epochMillis === "number") return (dt as any).epochMillis
+    if (dt && typeof (dt as any).epochMilliseconds === "number") return (dt as any).epochMilliseconds
     if (dt instanceof Date) return dt.getTime()
-    return Date.now()
+    return 0
   }
   return {
     id: String(info.id),
     slug: String(info.id),
     projectID: String(info.projectID),
+    parentID: info.parentID ? String(info.parentID) : undefined,
     directory: info.location?.directory ?? "",
     title: info.title ?? "Untitled",
     version: "0.1.0",

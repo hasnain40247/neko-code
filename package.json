@@ -15,7 +15,8 @@
     "packages/controller/mcp",
     "packages/controller/tool",
     "packages/view/tui",
-    "packages/view/cli"
+    "packages/view/cli",
+    "packages/view/graph"
   ],
   "catalog": {
     "@tsconfig/bun": "1.0.9",

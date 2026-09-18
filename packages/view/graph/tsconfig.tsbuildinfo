@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/header.tsx","./src/components/prompttip.tsx","./src/components/sessiontip.tsx","./src/components/sidebar.tsx","./src/components/zoomcontrols.tsx","./src/hooks/usegraphinteractions.ts","./src/lib/colors.ts","./src/lib/cy-styles.ts","./src/lib/layout.ts"],"version":"5.8.2"}

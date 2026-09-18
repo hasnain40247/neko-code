@@ -217,6 +217,7 @@ const spawnSubagent = (input: {
         .pipe(Effect.mapError(() => new Error(`Parent session not found: ${input.parentSessionID}`)))
       const child = yield* rt.sessions.create({
         projectID: parent.projectID,
+        parentID: input.parentSessionID,
         title: input.title ?? `Task: ${input.subagentType}`,
         agent: input.subagentType,
         model: parent.model

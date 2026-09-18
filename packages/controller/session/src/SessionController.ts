@@ -55,6 +55,7 @@ export class MessageNotFoundError extends Schema.TaggedErrorClass<MessageNotFoun
 export interface CreateInput {
   readonly id?: Session.ID
   readonly projectID: string
+  readonly parentID?: string
   readonly title?: string
   readonly agent?: string
   readonly model?: {
@@ -120,7 +121,7 @@ function buildSessionInfo(input: CreateInput, id: Session.ID): Session.Info {
   return {
     id,
     projectID: input.projectID as Session.Info["projectID"],
-    parentID: undefined,
+    parentID: input.parentID as Session.Info["parentID"] ?? undefined,
     title: input.title ?? `New session - ${new Date(now).toISOString()}`,
     agent: (input.agent as Session.Info["agent"]) ?? undefined,
     model: input.model

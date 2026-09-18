@@ -53,6 +53,7 @@ import { win32DisableProcessedInput, win32FlushInputBuffer } from "./terminal-wi
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
 import { filetype } from "./util/filetype"
+import { HistoryGraph, type GraphSessionEntry, type GraphPromptEntry, type GraphToolCall } from "./component/history-graph"
 
 const DIFF_ADDED_SIGN = RGBA.fromHex("#22863A")
 const DIFF_REMOVED_SIGN = RGBA.fromHex("#CB2431")
@@ -1154,6 +1155,12 @@ function Chat(props: { args: Args }) {
   // Dedicated skills palette modal (opened by /skills).
   const [skillsPaletteOpen, setSkillsPaletteOpen] = createSignal(false)
   const [skillsPaletteIndex, setSkillsPaletteIndex] = createSignal(0)
+
+  // History graph panel (opened by /graph).
+  const [historyGraphOpen, setHistoryGraphOpen] = createSignal(false)
+  const [historyGraphIndex, setHistoryGraphIndex] = createSignal(0)
+  const [historyGraphLoading, setHistoryGraphLoading] = createSignal(false)
+  const [historyGraphSessions, setHistoryGraphSessions] = createSignal<GraphSessionEntry[]>([])
   const skillsPaletteItems = (): SkillPaletteItem[] =>
     skills().map((s) => ({ name: s.name, description: s.description }))
 
@@ -1331,7 +1338,7 @@ function Chat(props: { args: Args }) {
   // the modal (MCP create wizard, models auth key) or the modal is purely
   // navigational and shouldn't stack another palette on top.
   const anyModalOpen = () =>
-    agentModalOpen() || mcpModalOpen() || modelsModalOpen() || themeModalOpen() || skillsPaletteOpen()
+    agentModalOpen() || mcpModalOpen() || modelsModalOpen() || themeModalOpen() || skillsPaletteOpen() || historyGraphOpen()
 
   function updatePaletteFromInput() {
     const text = inputEl?.plainText ?? ""
@@ -2227,6 +2234,26 @@ function Chat(props: { args: Args }) {
         togglePermissionMode()
         return
       }
+      case "graph": {
+        openHistoryGraph()
+        return
+      }
+      case "graph-demo": {
+        void (async () => {
+          try {
+            const { buildSimulatedGraphHTML } = await import("./util/graph-html")
+            const html = buildSimulatedGraphHTML()
+            const tmpPath = pathMod.join(os.tmpdir(), "neko-graph-demo.html")
+            await Bun.write(tmpPath, html)
+            const open = (await import("open")).default
+            await open(tmpPath)
+            showStatus("Opened demo graph in browser")
+          } catch {
+            showStatus("Failed to open demo graph", "warn")
+          }
+        })()
+        return
+      }
       default: {
         if (isSkillName(name, skills())) {
           insertSkillMention(name)
@@ -2274,6 +2301,122 @@ function Chat(props: { args: Args }) {
     if (!item) return
     closeSkillsPalette()
     insertSkillMention(item.name)
+  }
+
+  // ── History graph ───────────────────────────────────────────────────────────
+  function openHistoryGraph() {
+    closePalette()
+    inputEl?.setText("")
+    setHistoryGraphIndex(0)
+    setHistoryGraphOpen(true)
+    void loadHistoryGraphSessions()
+  }
+  function closeHistoryGraph() {
+    setHistoryGraphOpen(false)
+    setHistoryGraphIndex(0)
+  }
+  function moveHistoryGraphSelection(delta: number) {
+    const total = historyGraphSessions().length
+    if (total === 0) return
+    const next = Math.max(0, Math.min(historyGraphIndex() + delta, total - 1))
+    setHistoryGraphIndex(next)
+  }
+  async function loadHistoryGraphSessions() {
+    setHistoryGraphLoading(true)
+    try {
+      const res = await sdk.client.session.list({ limit: 100 })
+      setHistoryGraphSessions(
+        (res.data ?? []).map((s) => ({
+          id: s.id,
+          title: s.title || "Untitled",
+          directory: s.directory,
+          timeCreated: s.time.created,
+          timeUpdated: s.time.updated,
+          prompts: [],
+          parentId: s.parentID ?? undefined,
+        })),
+      )
+    } catch {}
+    setHistoryGraphLoading(false)
+  }
+  async function selectHistoryGraphSession() {
+    const session = historyGraphSessions()[historyGraphIndex()]
+    if (!session) return
+    setHistoryGraphLoading(true)
+    try {
+      const sameDirSessions = historyGraphSessions().filter(s => s.directory === session.directory)
+
+      // Fetch messages for each session and build prompt entries
+      const enriched = await Promise.all(
+        sameDirSessions.map(async (s): Promise<GraphSessionEntry> => {
+          try {
+            const res = await sdk.client.session.messages({
+              sessionID: s.id,
+              directory: s.directory,
+            })
+            const messages = res.data ?? []
+            const prompts: GraphPromptEntry[] = []
+
+            type ToolPartShape = { type: "tool"; tool: string; state: { status: string; input: Record<string, unknown>; output?: string; error?: string; raw?: string } }
+
+            for (let i = 0; i < messages.length; i++) {
+              const msg = messages[i]
+              if (msg.info.role !== "user") continue
+
+              const userText = msg.parts
+                .filter((p) => p.type === "text")
+                .map((p) => (p as { type: "text"; text: string }).text)
+                .join("")
+
+              // Collect ALL consecutive assistant messages for this turn (until the next user message).
+              // A single turn can have multiple assistant messages: one before tools run and one after.
+              const responseParts: string[] = []
+              const tools: GraphToolCall[] = []
+
+              for (let j = i + 1; j < messages.length; j++) {
+                const m = messages[j]
+                if (m.info.role === "user") break
+                if (m.info.role !== "assistant") continue
+
+                for (const p of m.parts) {
+                  if (p.type === "text") {
+                    const text = (p as { type: "text"; text: string }).text.trim()
+                    if (text) responseParts.push(text)
+                  } else if (p.type === "tool") {
+                    const tp = p as ToolPartShape
+                    const inputStr = Object.keys(tp.state.input ?? {}).length > 0
+                      ? JSON.stringify(tp.state.input, null, 2)
+                      : (tp.state.raw ?? undefined)
+                    const output = tp.state.status === "completed" ? tp.state.output
+                      : tp.state.status === "error" ? tp.state.error
+                      : undefined
+                    tools.push({ name: tp.tool, input: inputStr || undefined, output: output || undefined })
+                  }
+                }
+              }
+
+              prompts.push({ text: userText, response: responseParts.join("\n\n"), tools })
+            }
+
+            return { ...s, prompts }
+          } catch {
+            return s
+          }
+        }),
+      )
+
+      const { buildProjectGraphHTML } = await import("./util/graph-html")
+      const html = buildProjectGraphHTML(enriched, session.directory, session.id)
+      const tmpPath = pathMod.join(os.tmpdir(), `neko-graph-${session.id}.html`)
+      await Bun.write(tmpPath, html)
+      const open = (await import("open")).default
+      await open(tmpPath)
+      closeHistoryGraph()
+      showStatus(`Opened project graph for "${session.directory}"`)
+    } catch (e) {
+      showStatus("Failed to open graph", "warn")
+    }
+    setHistoryGraphLoading(false)
   }
 
   // Intercept up/down/tab/escape BEFORE the global keymap eats them for cursor
@@ -2439,6 +2582,22 @@ function Chat(props: { args: Args }) {
           if (key.name === "d") { requestDeleteMcpFromModal(); key.preventDefault(); return }
         }
         // In "create" phase, let text keys reach the input; only Esc handled above.
+        return
+      }
+
+      // History graph open: navigate sessions.
+      if (historyGraphOpen()) {
+        if (key.name === "escape" || key.name === "q") {
+          closeHistoryGraph()
+          key.preventDefault(); return
+        }
+        if (key.name === "up" || key.name === "k") { moveHistoryGraphSelection(-1); key.preventDefault(); return }
+        if (key.name === "down" || key.name === "j") { moveHistoryGraphSelection(1); key.preventDefault(); return }
+        if (key.name === "return") {
+          void selectHistoryGraphSession()
+          key.preventDefault(); return
+        }
+        key.preventDefault()
         return
       }
 
@@ -2929,7 +3088,18 @@ function Chat(props: { args: Args }) {
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={C_BG}>
-      {/* Messages */}
+      {/* History graph (full-screen overlay, replaces chat area when open) */}
+      <Show when={historyGraphOpen()}>
+        <HistoryGraph
+          visible={historyGraphOpen}
+          loading={historyGraphLoading}
+          sessions={historyGraphSessions}
+          selectedIndex={historyGraphIndex}
+        />
+      </Show>
+
+      {/* Messages (hidden when history graph is open) */}
+      <Show when={!historyGraphOpen()}>
       <scrollbox
         ref={(r: any) => (scrollEl = r)}
         flexGrow={1}
@@ -3048,6 +3218,10 @@ function Chat(props: { args: Args }) {
           </box>
         </Show>
       </scrollbox>
+      </Show>
+
+      {/* Bottom chrome — hidden entirely when the history graph is open */}
+      <Show when={!historyGraphOpen()}>
 
       {/* Divider — doubles as the status bar. The status pill slides in flush
           against the right edge of the screen, so paddingRight is 0 to let the
@@ -3285,7 +3459,9 @@ function Chat(props: { args: Args }) {
           }}
           flexGrow={1}
           textColor={C_EGG}
+          focusedTextColor={C_EGG}
           backgroundColor={C_INPUT}
+          focusedBackgroundColor={C_INPUT}
           cursorColor={agentColor(currentAgentName())}
           maxHeight={8}
           syntaxStyle={INPUT_SYNTAX}
@@ -3366,6 +3542,8 @@ function Chat(props: { args: Args }) {
           </box>
         </box>
       </Show>
+
+      </Show>{/* end: bottom chrome hidden when history graph is open */}
     </box>
   )
 }
