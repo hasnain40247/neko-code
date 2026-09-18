@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs"
 import * as path from "node:path"
 import type { GraphSessionEntry, GraphPromptEntry, GraphToolCall } from "../component/history-graph"
+// Embedded at build time so the compiled binary doesn't need the file on disk.
+// @ts-ignore — Bun text loader (import attributes)
+import _distHtml from '../../../graph/dist/index.html' with { type: 'text' }
+const DIST_HTML = _distHtml as string
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtDateTime(raw?: number): string {
@@ -250,19 +254,11 @@ export function buildProjectGraphHTML(
   projectDir: string,
   focusSessionId?: string,
 ): string {
-  const distPath = path.join(import.meta.dir, "../../../graph/dist/index.html")
-  let distHtml: string
-  try {
-    distHtml = readFileSync(distPath, "utf-8")
-  } catch {
-    return `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;background:#E8DCC8;color:#3A2818"><h2>Graph app not built</h2><p>Run: <code>cd packages/view/graph &amp;&amp; bun run build</code></p></body></html>`
-  }
-
   const days         = groupSessionsByDay(sessions)
   const focusSession = focusSessionId ? sessions.find(s => s.id === focusSessionId) : undefined
   const title        = focusSession?.title || projectDir.split("/").filter(Boolean).pop() || projectDir
   return injectDataIntoHTML(
-    distHtml, title, projectDir,
+    DIST_HTML, title, projectDir,
     buildElements(days), buildAgentSessionMap(days),
     catGifSrc() || null,
     focusSessionId,
