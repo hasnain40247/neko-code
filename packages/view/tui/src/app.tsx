@@ -2234,24 +2234,8 @@ function Chat(props: { args: Args }) {
         togglePermissionMode()
         return
       }
-      case "graph": {
+      case "history": {
         openHistoryGraph()
-        return
-      }
-      case "graph-demo": {
-        void (async () => {
-          try {
-            const { buildSimulatedGraphHTML } = await import("./util/graph-html")
-            const html = buildSimulatedGraphHTML()
-            const tmpPath = pathMod.join(os.tmpdir(), "neko-graph-demo.html")
-            await Bun.write(tmpPath, html)
-            const open = (await import("open")).default
-            await open(tmpPath)
-            showStatus("Opened demo graph in browser")
-          } catch {
-            showStatus("Failed to open demo graph", "warn")
-          }
-        })()
         return
       }
       default: {

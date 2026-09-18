@@ -31,6 +31,5 @@ export const registry: readonly Info[] = [
   { name: "models",     description: "Switch the active model", status: "active" },
   { name: "clear",      description: "Start a fresh session (clears context and history)", status: "active" },
   { name: "permission", description: "Toggle auto-approve for tool permission prompts", aliases: ["auto"], status: "active" },
-  { name: "graph",      description: "View session history as an interactive node graph", status: "active" },
-  { name: "graph-demo", description: "Open a simulated session graph for design iteration", status: "active" },
+  { name: "history",     description: "View session history as an interactive node graph", status: "active" },
 ]
