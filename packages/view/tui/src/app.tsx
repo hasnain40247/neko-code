@@ -2107,6 +2107,16 @@ function Chat(props: { args: Args }) {
   async function ensureSessionID(): Promise<string | null> {
     const existing = sessionID()
     if (existing) return existing
+    // Resume the most recent session for this project rather than always creating a
+    // new one. A user can start fresh explicitly with /clear.
+    try {
+      const listRes = await sdk.client.session.list({ limit: 1 })
+      const latest = (listRes?.data as any[])?.[0]
+      if (latest?.id) {
+        setSessionID(String(latest.id))
+        return String(latest.id)
+      }
+    } catch { /* fall through to create */ }
     const res = await sdk.client.session
       .create({
         agent: currentAgentName(),
