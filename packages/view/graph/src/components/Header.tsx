@@ -5,19 +5,14 @@ interface HeaderProps {
   directory: string
   catGif: string | null
   focusSessionId: string | null
-  isDark: boolean
-  onToggleTheme: () => void
 }
 
-export function Header({ title, directory, catGif, focusSessionId, isDark, onToggleTheme }: HeaderProps) {
+export function Header({ title, directory, catGif, focusSessionId }: HeaderProps) {
   return (
     <>
       <div id="hdr">
         {catGif && <img id="hdr-gif" src={catGif} alt="" />}
         <span id="hdr-brand">neko</span>
-        <button id="theme-toggle" onClick={onToggleTheme} aria-label="Toggle theme">
-          {isDark ? '☀' : '☾'}
-        </button>
       </div>
       <div id="hdr-fade" />
       <div id="meta-pill">

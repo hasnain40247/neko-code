@@ -30,7 +30,6 @@ export interface ScrollTarget {
 export function useGraphInteractions(
   containerRef: RefObject<HTMLDivElement | null>,
   data: GraphData,
-  isDark: boolean,
 ) {
   // ── React state (drives re-renders) ────────────────────────────────────────
   const [sidebarOpen,      setSidebarOpen]      = useState(false)
@@ -52,8 +51,6 @@ export function useGraphInteractions(
   const sbSessionNodeIDRef    = useRef<string | null>(null)
   const tipTimerRef           = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollTickRef         = useRef(0)
-  const minCountRef           = useRef(0)
-  const maxCountRef           = useRef(1)
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function doScrollTo(num: number, subType?: 'tool' | 'assistant', toolName?: string, forceOpen = false) {
@@ -576,13 +573,11 @@ export function useGraphInteractions(
     const counts  = sesEls.map(e => e.data?.promptCount ?? 0)
     const minCount = counts.length ? Math.min(...counts) : 0
     const maxCount = counts.length ? Math.max(...counts) : 1
-    minCountRef.current = minCount
-    maxCountRef.current = maxCount
 
     const cy = cytoscape({
       container,
       elements: data.elements as cytoscape.ElementDefinition[],
-      style:    buildCyStyles(minCount, maxCount, isDark),
+      style:    buildCyStyles(minCount, maxCount),
       layout:   { name: 'preset', fit: true, padding: 80 } as cytoscape.PresetLayoutOptions,
       userZoomingEnabled: true,
       userPanningEnabled: true,
@@ -771,13 +766,6 @@ export function useGraphInteractions(
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Re-apply Cytoscape stylesheet when the theme changes
-  useEffect(() => {
-    const cy = cyRef.current
-    if (!cy) return
-    cy.style(buildCyStyles(minCountRef.current, maxCountRef.current, isDark) as cytoscape.StylesheetStyle[])
-  }, [isDark])
 
   return {
     sidebarOpen,

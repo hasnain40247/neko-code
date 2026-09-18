@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react'
+import React, { useRef } from 'react'
 import type { GraphData } from './types'
 import { useGraphInteractions } from './hooks/useGraphInteractions'
 import { Header }       from './components/Header'
@@ -13,11 +13,6 @@ interface AppProps {
 
 export function App({ data }: AppProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [isDark, setIsDark] = useState(false)
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
-  }, [isDark])
 
   const {
     sidebarOpen,
@@ -36,7 +31,7 @@ export function App({ data }: AppProps) {
     onToolHover,
     onToolLeave,
     onToolClick,
-  } = useGraphInteractions(containerRef, data, isDark)
+  } = useGraphInteractions(containerRef, data)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -45,8 +40,6 @@ export function App({ data }: AppProps) {
         directory={data.directory}
         catGif={data.catGifBase64}
         focusSessionId={data.focusSessionId}
-        isDark={isDark}
-        onToggleTheme={() => setIsDark(d => !d)}
       />
       <div id="app">
         <div ref={containerRef} id="cy" />
