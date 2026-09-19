@@ -36,9 +36,17 @@ function ToolBlock({
   onClick: () => void
 }) {
   const name       = typeof tool === 'string' ? tool : (tool.name || 'tool')
-  const inp        = typeof tool === 'object' ? tool.input  : undefined
-  const out        = typeof tool === 'object' ? tool.output : undefined
+  const inp        = typeof tool === 'object' ? tool.input     : undefined
+  const out        = typeof tool === 'object' ? tool.output    : undefined
+  const mcpServer  = typeof tool === 'object' ? tool.mcpServer : undefined
   const hasContent = !!(inp || out)
+
+  const nameRow = (
+    <>
+      <span className="chat-tool-name">{name}</span>
+      {mcpServer && <span className="chat-tool-mcp-tag">{mcpServer}</span>}
+    </>
+  )
 
   if (!hasContent) {
     return (
@@ -49,7 +57,7 @@ function ToolBlock({
         onMouseLeave={onLeave}
         onClick={onClick}
       >
-        <span className="chat-tool-name">{name}</span>
+        {nameRow}
       </div>
     )
   }
@@ -62,7 +70,7 @@ function ToolBlock({
       onMouseLeave={onLeave}
     >
       <summary onClick={onClick}>
-        <span className="chat-tool-name">{name}</span>
+        {nameRow}
       </summary>
       <div className="chat-tool-io">
         {inp && <><div className="chat-tool-io-lbl">Input</div><pre className="chat-tool-code">{inp}</pre></>}
@@ -70,6 +78,19 @@ function ToolBlock({
       </div>
     </details>
   )
+}
+
+function fmtTime(raw?: number): string {
+  if (!raw) return ''
+  const ms = raw > 1e13 ? Math.floor(raw / 1000) : raw
+  if (ms <= 0) return ''
+  const d   = new Date(ms)
+  const now = new Date()
+  const sameDay = d.toDateString() === now.toDateString()
+  return sameDay
+    ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + '  ' +
+      d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 function ChatTurnGroup({
@@ -91,6 +112,7 @@ function ChatTurnGroup({
   onToolLeave: () => void
   onToolClick: (toolIndex: number) => void
 }) {
+  const timeLabel = fmtTime(p.time)
   return (
     <div
       className="chat-turn-group"
@@ -105,7 +127,10 @@ function ChatTurnGroup({
             onClick={e => { e.stopPropagation(); onSelect() }}
           />
           <div className="chat-turn">
-            <div className="chat-lbl">User</div>
+            <div className="chat-lbl">
+              User
+              {timeLabel && <span className="chat-turn-time">{timeLabel}</span>}
+            </div>
             <div className="chat-bubble chat-bubble-user">{p.text}</div>
           </div>
         </>

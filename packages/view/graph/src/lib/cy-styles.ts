@@ -225,6 +225,25 @@ export function buildCyStyles(minCount: number, maxCount: number): cytoscape.Sty
       'border-width': 2,
       'opacity': 1,
     }},
+    { selector: 'node[type="tool"][?isMcp]', style: {
+      'background-color': '#E8A888',
+      'border-color': '#C07858',
+      'border-width': 1.5,
+      'width': 11, 'height': 11,
+      'background-opacity': 1,
+    }},
+    { selector: 'node[type="tool"][?isMcp].hovered', style: {
+      'background-color': '#D08868',
+      'border-color': '#A05838',
+      'border-width': 2,
+      'opacity': 1,
+    }},
+    { selector: 'node[type="tool"][?isMcp].tool-active', style: {
+      'background-color': '#B06848',
+      'border-color': '#804028',
+      'border-width': 2,
+      'opacity': 1,
+    }},
     { selector: 'edge[?asstEdge]', style: {
       'width': 1, 'line-color': '#B09878', 'opacity': 0.4, 'curve-style': 'straight',
     }},

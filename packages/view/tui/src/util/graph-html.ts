@@ -160,6 +160,7 @@ function buildElements(days: DayGroup[]): object[] {
         text:     p.text,
         response: p.response,
         tools:    p.tools,
+        time:     p.time,
         num:      pi + 1,
         gx:       pgp[pi]!.gx,
         gy:       pgp[pi]!.gy,
@@ -220,7 +221,7 @@ function buildAgentSessionMap(days: DayGroup[]): Record<string, object[]> {
         title:           session.title,
         promptCount:     session.prompts.length,
         promptsData:     allPrompts.map((p, pi) => ({
-          text: p.text, response: p.response, tools: p.tools, num: pi + 1,
+          text: p.text, response: p.response, tools: p.tools, time: p.time, num: pi + 1,
           gx: 0, gy: 0,
         })),
       }
@@ -245,7 +246,11 @@ function injectDataIntoHTML(
   const safeJson = (v: unknown) => JSON.stringify(v).replace(/<\//g, "\\u003c/")
   const payload  = { elements, agentMap, title, directory, focusSessionId: focusSessionId ?? null, catGifBase64 }
   const dataScript = `<script>window.__GRAPH_DATA__ = ${safeJson(payload)};</script>\n`
-  return distHtml.replace("</head>", `${dataScript}</head>`)
+  // Inject favicon synchronously so the browser picks it up before React mounts.
+  const faviconScript = catGifBase64
+    ? `<script>(function(){var l=document.createElement('link');l.rel='icon';l.type='image/gif';l.href=window.__GRAPH_DATA__.catGifBase64;document.head.appendChild(l);})();</script>\n`
+    : ''
+  return distHtml.replace("</head>", `${dataScript}${faviconScript}</head>`)
 }
 
 // ─── Public: project graph ─────────────────────────────────────────────────────

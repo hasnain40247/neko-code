@@ -124,7 +124,7 @@ export function useGraphInteractions(
     if (!cy) return
     const pNode = cy.$('#' + promptID) as cytoscape.NodeSingular
     const pd    = pNode.data() as {
-      sessionID: string; response: string; tools: Array<{ name: string; input?: string; output?: string }>
+      sessionID: string; response: string; tools: Array<{ name: string; input?: string; output?: string; isMcp?: boolean; mcpServer?: string }>
     }
     const px = pNode.position('x'), py = pNode.position('y')
 
@@ -153,7 +153,9 @@ export function useGraphInteractions(
       const toolInp  = typeof tool === 'object' ? (tool.input  || '') : ''
       const toolOut  = typeof tool === 'object' ? (tool.output || '') : ''
       const isAgent  = /agent/i.test(toolName)
-      els.push({ data: { id: tid, type: 'tool', name: toolName, input: toolInp, output: toolOut, promptID, isAgent },
+      const isMcp    = typeof tool === 'object' ? !!tool.isMcp : false
+      const mcpSrv   = typeof tool === 'object' ? tool.mcpServer : undefined
+      els.push({ data: { id: tid, type: 'tool', name: toolName, input: toolInp, output: toolOut, promptID, isAgent, isMcp, mcpServer: mcpSrv },
                  position: { x: asstX + ox * TOOL_DIST + lx * lat, y: asstY + oy * TOOL_DIST + ly * lat } })
       els.push({ data: { id: tid + '_e', source: asstId, target: tid, toolEdge: true } })
     })
@@ -694,12 +696,15 @@ export function useGraphInteractions(
     cy.on('mouseout', 'node[type="prompt"]', () => setPromptTip(null))
 
     cy.on('mouseover', 'node[type="tool"]', e => {
-      const target = e.target as cytoscape.NodeSingular
-      const name   = target.data('name') as string
+      const target  = e.target as cytoscape.NodeSingular
+      const name    = target.data('name') as string
       if (!name) return
+      const isMcp   = target.data('isMcp') as boolean | undefined
+      const server  = target.data('mcpServer') as string | undefined
+      const tipText = isMcp && server ? `${server} / ${name}` : name
       const rp   = target.renderedPosition()
       const rect = cy.container()!.getBoundingClientRect()
-      setPromptTip({ text: name, x: rect.left + rp.x + 14, y: rect.top + rp.y - 38 })
+      setPromptTip({ text: tipText, x: rect.left + rp.x + 14, y: rect.top + rp.y - 38 })
     })
     cy.on('mouseout', 'node[type="tool"]', () => setPromptTip(null))
 

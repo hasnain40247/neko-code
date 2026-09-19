@@ -275,6 +275,9 @@ body::after {
 }
 
 .chat-lbl {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: .08em;
@@ -463,6 +466,30 @@ body::after {
   font-weight: 700;
   color: var(--text-m);
   font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.chat-turn-time {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-dim);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  letter-spacing: 0.03em;
+}
+
+.chat-tool-mcp-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: #B06848;
+  background: rgba(232, 168, 136, 0.15);
+  border: 1px solid rgba(192, 120, 88, 0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .chat-tool-io {

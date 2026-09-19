@@ -19,9 +19,10 @@ export interface PromptNodeData {
   text: string
   response: string
   tools: GraphToolCall[]
+  time?: number
   num: number
   gx: number
   gy: number
 }
 
-export type GraphToolCall = { name: string; input?: string; output?: string }
+export type GraphToolCall = { name: string; input?: string; output?: string; isMcp?: boolean; mcpServer?: string }

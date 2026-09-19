@@ -2107,16 +2107,6 @@ function Chat(props: { args: Args }) {
   async function ensureSessionID(): Promise<string | null> {
     const existing = sessionID()
     if (existing) return existing
-    // Resume the most recent session for this project rather than always creating a
-    // new one. A user can start fresh explicitly with /clear.
-    try {
-      const listRes = await sdk.client.session.list({ limit: 1 })
-      const latest = (listRes?.data as any[])?.[0]
-      if (latest?.id) {
-        setSessionID(String(latest.id))
-        return String(latest.id)
-      }
-    } catch { /* fall through to create */ }
     const res = await sdk.client.session
       .create({
         agent: currentAgentName(),
@@ -2340,6 +2330,19 @@ function Chat(props: { args: Args }) {
     try {
       const sameDirSessions = historyGraphSessions().filter(s => s.directory === session.directory)
 
+      // Detect MCP tools by checking if the tool name starts with a known MCP
+      // server prefix (sanitize(serverName)+"_"). This only requires server names
+      // from config — not the tool list — so it works even if the server hasn't
+      // finished initializing its defs yet.
+      const sanitizeMcp = (v: string) => v.replace(/[^a-zA-Z0-9_-]/g, "_")
+      const mcpPrefixes: Array<{ prefix: string; name: string }> = []
+      try {
+        const mcpList = await fetchMcpList()
+        for (const server of mcpList) {
+          mcpPrefixes.push({ prefix: sanitizeMcp(server.name) + "_", name: server.name })
+        }
+      } catch {}
+
       // Fetch messages for each session and build prompt entries
       const enriched = await Promise.all(
         sameDirSessions.map(async (s): Promise<GraphSessionEntry> => {
@@ -2384,12 +2387,19 @@ function Chat(props: { args: Args }) {
                     const output = tp.state.status === "completed" ? tp.state.output
                       : tp.state.status === "error" ? tp.state.error
                       : undefined
-                    tools.push({ name: tp.tool, input: inputStr || undefined, output: output || undefined })
+                    const mcpMatch = mcpPrefixes.find(s => tp.tool.startsWith(s.prefix))
+                    tools.push({
+                      name: tp.tool,
+                      input: inputStr || undefined,
+                      output: output || undefined,
+                      isMcp: mcpMatch ? true : undefined,
+                      mcpServer: mcpMatch?.name,
+                    })
                   }
                 }
               }
 
-              prompts.push({ text: userText, response: responseParts.join("\n\n"), tools })
+              prompts.push({ text: userText, response: responseParts.join("\n\n"), tools, time: msg.info.time.created })
             }
 
             return { ...s, prompts }

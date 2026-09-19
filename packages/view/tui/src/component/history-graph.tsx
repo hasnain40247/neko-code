@@ -16,12 +16,15 @@ export type GraphToolCall = {
   name: string
   input?: string
   output?: string
+  isMcp?: boolean
+  mcpServer?: string
 }
 
 export type GraphPromptEntry = {
   text: string
   response: string
   tools: GraphToolCall[]
+  time?: number
 }
 
 export type GraphSessionEntry = {
