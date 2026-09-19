@@ -1465,12 +1465,12 @@ function handleRequest(
     return (async () => {
       const projectID = encodeURIComponent(directory)
       const sessions = await services.listSessions(projectID).catch(() => [] as any[])
-      const status: Record<string, { type: string }> = {}
+      const status: Record<string, { type: "busy" | "idle" }> = {}
       for (const s of sessions) {
         const events = await services.loadEvents(s.id).catch(() => [] as any[])
         const last = events.at(-1)?.type ?? ""
         const running = last === "session.next.step.started" || last === "session.next.text.started"
-        status[s.id] = { type: running ? "running" : "idle" }
+        status[s.id] = { type: running ? "busy" : "idle" }
       }
       return json(status)
     })()

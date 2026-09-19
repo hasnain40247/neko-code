@@ -202,12 +202,12 @@ describe("GET /session", () => {
 })
 
 describe("GET /session/status", () => {
-  test("returns map of sessionID to running|idle", async () => {
+  test("returns map of sessionID to busy|idle", async () => {
     const res = await get("/session/status")
     expect(res.status).toBe(200)
     const body = await res.json() as any
     expect(typeof body).toBe("object")
-    expect(body[SESSION_ID]).toBe("idle")
+    expect(body[SESSION_ID]).toEqual({ type: "idle" })
   })
 })
 

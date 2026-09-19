@@ -19,7 +19,7 @@ export type AgentPaletteItem = {
 
 export type AgentPalettePhase =
   | { type: "select"; items: AgentPaletteItem[]; index: number }
-  | { type: "create"; step: "name" | "description" | "mode"; name?: string; description?: string }
+  | { type: "create"; step: "name" | "description" | "mode" | "prompt"; name?: string; description?: string; mode?: string; prompt?: string }
   | { type: "confirm"; name: string; returnIndex: number; items: AgentPaletteItem[] }
 
 export function AgentPalette(props: {
@@ -133,8 +133,13 @@ export function AgentPalette(props: {
                 {rowFor("Description", p.description, p.step === "description")}
                 {rowFor(
                   "Mode",
-                  p.step === "mode" ? "primary | subagent | all" : undefined,
+                  p.step === "mode" ? "primary | subagent | all" : p.mode,
                   p.step === "mode",
+                )}
+                {rowFor(
+                  "Prompt",
+                  p.step === "prompt" ? "(optional — enter to skip)" : p.prompt,
+                  p.step === "prompt",
                 )}
                 <box paddingLeft={1} paddingRight={1}>
                   <text fg={C_DIM}>

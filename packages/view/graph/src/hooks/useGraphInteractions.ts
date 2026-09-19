@@ -382,16 +382,31 @@ export function useGraphInteractions(
       current   = parent
     }
 
-    // Keep expanded prompt bubbles visible for all sessions — but when clicking
-    // a prompt, skip its own session's sibling bubbles so they fade out (same
-    // behaviour as tool siblings when a tool is selected).
-    const clickedPromptSID = node.data('type') === 'prompt'
-      ? (node.data('sessionID') as string | undefined)
-      : null
+    // Keep expanded prompt bubbles visible for all sessions — but skip the
+    // clicked node's own session's sibling bubbles so they fade out.
+    // This applies to prompt, tool, and assistant nodes (all have a session
+    // they belong to; for detail nodes we look it up via promptID).
+    const nodeType = node.data('type') as string
+    // For detail-level clicks (prompt/tool/assistant) derive the containing
+    // session so sibling prompt bubbles in that session can be excluded.
+    const isDetailClick = nodeType === 'prompt' || nodeType === 'tool' || nodeType === 'assistant'
+    let clickedPromptSID: string | undefined
+    if (nodeType === 'prompt') {
+      clickedPromptSID = node.data('sessionID') as string | undefined
+    } else if (nodeType === 'tool' || nodeType === 'assistant') {
+      const pid = node.data('promptID') as string | undefined
+      if (pid) {
+        const pn = cy.$('#' + pid) as cytoscape.NodeSingular
+        if (!pn.empty()) clickedPromptSID = pn.data('sessionID') as string | undefined
+      }
+    }
     Object.keys(expandedPromptsRef.current).forEach(sid => {
       const sn = cy.$('#' + sid) as cytoscape.NodeSingular
       if (!sn.empty()) chain = chain.add(sn)
-      if (expandedPromptsRef.current[sid] && sid !== clickedPromptSID) {
+      // For detail-level clicks only include the clicked session's own prompt
+      // bubbles (handled via the clickedPromptSID exclusion above). Other
+      // sessions' bubbles should not light up — they stay faded.
+      if (expandedPromptsRef.current[sid] && sid !== clickedPromptSID && !isDetailClick) {
         chain = chain.add(expandedPromptsRef.current[sid])
       }
     })
@@ -462,7 +477,10 @@ export function useGraphInteractions(
     const agentSessions = data.agentMap[parentRealId]
     if (!agentSessions || !agentSessions.length) return
 
-    const agentSession = agentSessions[0]!
+    // Match the specific child session by task ID from the tool output; fall
+    // back to the first entry only when no ID is present in the output.
+    const agentSession = (childSid && agentSessions.find(s => s.sessionId === childSid))
+      || agentSessions[0]!
     const agentNodeId  = tid + '_agent_session'
 
     const agentEls = cy.add([

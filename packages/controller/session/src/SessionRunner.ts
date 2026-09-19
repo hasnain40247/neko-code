@@ -697,10 +697,14 @@ function assistantToLLM(message: SessionMessage.Assistant, model: Model): Messag
   ]
 }
 
-function toLLMMessages(messages: SessionMessage.Message[], model: Model): Message[] {
+function toLLMMessages(messages: SessionMessage.Message[], model: Model, agentSwitchPrompts?: Map<string, string>): Message[] {
   return messages.flatMap((message): Message[] => {
     switch (message.type) {
-      case "agent-switched":
+      case "agent-switched": {
+        const prompt = agentSwitchPrompts?.get(message.agent)
+        const header = `[Agent switched to: ${message.agent}]`
+        return [Message.system(prompt ? `${header}\n\n${prompt}` : header)]
+      }
       case "model-switched":
         return []
       case "user":
@@ -1637,19 +1641,78 @@ The conversation you see already contains tool calls and their results. Write a 
         ? {}
         : yield* mcpController.tools()
 
-      // Use the agent's declared system prompt, falling back to a generic one
-      const systemPrompt =
-        agentInfo?.system ??
-        [
-          session.agent !== undefined ? `Agent: ${session.agent}.` : "",
-          `You are a helpful AI assistant. Answer the user's requests completely and accurately.`,
-        ]
-          .filter(Boolean)
-          .join("\n")
+      // Build the system prompt.
+      // - Agents with an explicit system (built-ins + user-defined): prepend a
+      //   one-line identity header so the model always knows its own name.
+      // - Agents with no system: generate a complete, grounded prompt from name
+      //   + description so the model has real content to draw on rather than
+      //   defaulting to generic "build mode / plan mode" framing.
+      let systemPrompt: string
+      if (agentInfo?.system) {
+        // Prepend a one-line identity so the model always knows its own name,
+        // even when the system prompt doesn't mention it.
+        const header = session.agent
+          ? `Your name is ${session.agent}${agentInfo.description ? `. ${agentInfo.description}` : "."}`
+          : null
+        systemPrompt = header ? `${header}\n\n${agentInfo.system}` : agentInfo.system
+      } else if (session.agent) {
+        // No system prompt — generate a complete, grounded one. Weave the name
+        // into a capability sentence so the model has a concrete identity to
+        // draw on rather than defaulting to "build mode" / "plan mode" framing.
+        if (agentInfo?.description) {
+          systemPrompt = `You are ${session.agent}. ${agentInfo.description}\n\nYou can read and edit files, run shell commands, search the web, and help the user with a wide range of tasks.`
+        } else {
+          systemPrompt = `You are ${session.agent}, a full-capability AI coding assistant. You can read and edit files, run shell commands, search the web, and help the user with software engineering and general tasks.`
+        }
+      } else {
+        systemPrompt = `You are a helpful AI assistant. Answer the user's requests completely and accurately.`
+      }
+
+      // For every agent-switch in history, inject that agent's full resolved
+      // system prompt so the model has a concrete, unambiguous context anchor
+      // at the point of each switch — not just a weak "[Agent switched to: X]".
+      const switchedNames = new Set(
+        history
+          .filter((m): m is SessionMessage.AgentSwitched => m.type === "agent-switched")
+          .map((m) => m.agent),
+      )
+      const agentSwitchPrompts = new Map<string, string>()
+      if (switchedNames.size > 0) {
+        const allAgentInfos = yield* agentController.all()
+        for (const info of allAgentInfos) {
+          const name = String(info.id)
+          if (!switchedNames.has(name)) continue
+          let resolved: string
+          if (info.system) {
+            const hdr = `Your name is ${name}${info.description ? `. ${info.description}` : "."}`
+            resolved = `${hdr}\n\n${info.system}`
+          } else if (info.description) {
+            resolved = `You are ${name}. ${info.description}\n\nYou can read and edit files, run shell commands, search the web, and help the user with a wide range of tasks.`
+          } else {
+            resolved = `You are ${name}, a full-capability AI coding assistant. You can read and edit files, run shell commands, search the web, and help the user with software engineering and general tasks.`
+          }
+          agentSwitchPrompts.set(name, resolved)
+        }
+      }
+
+      // Detect implicit agent switch: user cycled via UI (PATCH to session.agent)
+      // without a durable agent-switched event. Prepend a switch notice directly
+      // into the system prompt — always valid, no conversation-format issues.
+      const lastRespondingAgent = [...history]
+        .reverse()
+        .find((m): m is SessionMessage.Assistant => m.type === "assistant")
+        ?.agent
+      const alreadyHasSwitch = history.some(
+        (m): m is SessionMessage.AgentSwitched =>
+          m.type === "agent-switched" && m.agent === session.agent,
+      )
+      if (session.agent && lastRespondingAgent && lastRespondingAgent !== session.agent && !alreadyHasSwitch) {
+        systemPrompt = `IMPORTANT: the agent just switched. You were previously "${lastRespondingAgent}" — disregard that identity entirely. You are now "${session.agent}". Your current instructions follow.\n\n${systemPrompt}`
+      }
 
       // Build LLM messages
       const llmMessages: Message[] = [
-        ...toLLMMessages(history, model),
+        ...toLLMMessages(history, model, agentSwitchPrompts),
         ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : []),
       ]
 

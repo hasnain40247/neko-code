@@ -2031,12 +2031,12 @@ function Chat(props: { args: Args }) {
     }
   }
 
-  async function submitNewAgent(name: string, description: string, mode: "primary" | "subagent" | "all") {
+  async function submitNewAgent(name: string, description: string, mode: "primary" | "subagent" | "all", prompt?: string) {
     try {
       const res = await sdk.fetch(sdk.url + "/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, description, mode }),
+        body: JSON.stringify({ name, description, mode, ...(prompt ? { system: prompt } : {}) }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string }
@@ -3016,10 +3016,18 @@ function Chat(props: { args: Args }) {
         const mode = (modeInput === "subagent" || modeInput === "all" || modeInput === "primary")
           ? modeInput
           : "primary"
+        setAgentModalPhase({ type: "create", step: "prompt", name: modal.name, description: modal.description, mode })
+        return
+      }
+      if (modal.step === "prompt") {
         const name = modal.name!
         const description = modal.description!
+        const mode = (modal.mode === "subagent" || modal.mode === "all" || modal.mode === "primary")
+          ? modal.mode
+          : "primary"
+        const prompt = text.trim() || undefined
         closeAgentModal()
-        await submitNewAgent(name, description, mode)
+        await submitNewAgent(name, description, mode, prompt)
         return
       }
     }
