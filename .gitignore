@@ -8,5 +8,6 @@ dist/
 application_default_credentials.json
 opencode.json
 neko.json
+!packages/**/assets/neko.json
 .DS_Store
 *.log

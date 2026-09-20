@@ -6,11 +6,28 @@ on:
       - 'v*'
 
 jobs:
-  release:
-    name: Build & publish
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
     permissions:
-      contents: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: bun-darwin-arm64
+            asset: neko-darwin-aarch64
+          - os: macos-13
+            target: bun-darwin-x64
+            asset: neko-darwin-x86_64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            asset: neko-linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: bun-linux-arm64
+            asset: neko-linux-aarch64
 
     steps:
       - uses: actions/checkout@v4
@@ -22,19 +39,35 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build all targets
+      - name: Build
         run: |
           mkdir -p dist
-          BUILD_TARGET=bun-darwin-arm64 BUILD_OUTFILE=dist/neko-darwin-aarch64 bun run build.ts
-          BUILD_TARGET=bun-darwin-x64   BUILD_OUTFILE=dist/neko-darwin-x86_64  bun run build.ts
-          BUILD_TARGET=bun-linux-x64    BUILD_OUTFILE=dist/neko-linux-x86_64   bun run build.ts
-          BUILD_TARGET=bun-linux-arm64  BUILD_OUTFILE=dist/neko-linux-aarch64  bun run build.ts
+          BUILD_TARGET=${{ matrix.target }} BUILD_OUTFILE=dist/${{ matrix.asset }} bun run build.ts
 
-      - name: Publish release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes \
             dist/neko-darwin-aarch64 \
