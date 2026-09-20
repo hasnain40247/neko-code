@@ -42,7 +42,16 @@ jobs:
 
       - name: Install cross-platform native package
         if: matrix.extra_pkg != ''
-        run: npm install --force --no-save ${{ matrix.extra_pkg }}
+        run: |
+          PKG="${{ matrix.extra_pkg }}"
+          # e.g. @opentui/core-darwin-x64@0.3.4 → scope/name and version
+          NAME="${PKG%@*}"   # @opentui/core-darwin-x64
+          VER="${PKG##*@}"   # 0.3.4
+          ENCODED="${NAME/@/}"; ENCODED="@${ENCODED////%2F}"
+          DEST="node_modules/${NAME}"
+          mkdir -p "$DEST"
+          curl -fsSL "https://registry.npmjs.org/${NAME}/-/${NAME##*/}-${VER}.tgz" \
+            | tar -xz --strip-components=1 -C "$DEST"
 
       - name: Build
         run: |
