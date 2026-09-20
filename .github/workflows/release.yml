@@ -42,7 +42,7 @@ jobs:
 
       - name: Install cross-platform native package
         if: matrix.extra_pkg != ''
-        run: bun add ${{ matrix.extra_pkg }}
+        run: npm install --force --no-save ${{ matrix.extra_pkg }}
 
       - name: Build
         run: |
