@@ -19,9 +19,10 @@ jobs:
           - os: macos-14
             target: bun-darwin-arm64
             asset: neko-darwin-aarch64
-          - os: macos-13
+          - os: macos-14
             target: bun-darwin-x64
             asset: neko-darwin-x86_64
+            extra_pkg: "@opentui/core-darwin-x64@0.3.4"
           - os: ubuntu-latest
             target: bun-linux-x64
             asset: neko-linux-x86_64
@@ -38,6 +39,10 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Install cross-platform native package
+        if: matrix.extra_pkg != ''
+        run: bun add ${{ matrix.extra_pkg }}
 
       - name: Build
         run: |
