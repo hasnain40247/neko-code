@@ -1,10 +1,11 @@
-import { readFileSync } from "node:fs"
-import * as path from "node:path"
 import type { GraphSessionEntry, GraphPromptEntry, GraphToolCall } from "../component/history-graph"
 // Embedded at build time so the compiled binary doesn't need the file on disk.
 // @ts-ignore — Bun text loader (import attributes)
 import _distHtml from '../../../graph/dist/index.html' with { type: 'text' }
 const DIST_HTML = _distHtml as string
+// @ts-ignore — gif-base64 plugin converts this to a data URL string at build time
+import _catGifDataUrl from '../../../../../assets/landing_cat.gif'
+const CAT_GIF_DATA_URL = _catGifDataUrl as string
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtDateTime(raw?: number): string {
@@ -12,12 +13,6 @@ function fmtDateTime(raw?: number): string {
   const ms = raw > 1e13 ? Math.floor(raw / 1000) : raw
   if (ms <= 0) return ""
   return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-}
-
-function catGifSrc(): string {
-  try {
-    return "data:image/gif;base64," + readFileSync(path.join(import.meta.dir, "../../../../../assets/landing_cat.gif")).toString("base64")
-  } catch { return "" }
 }
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -250,7 +245,8 @@ function injectDataIntoHTML(
   const faviconScript = catGifBase64
     ? `<script>(function(){var l=document.createElement('link');l.rel='icon';l.type='image/gif';l.href=window.__GRAPH_DATA__.catGifBase64;document.head.appendChild(l);})();</script>\n`
     : ''
-  return distHtml.replace("</head>", `${dataScript}${faviconScript}</head>`)
+  const injection = `${dataScript}${faviconScript}</head>`
+  return distHtml.replace("</head>", () => injection)
 }
 
 // ─── Public: project graph ─────────────────────────────────────────────────────
@@ -265,7 +261,7 @@ export function buildProjectGraphHTML(
   return injectDataIntoHTML(
     DIST_HTML, title, projectDir,
     buildElements(days), buildAgentSessionMap(days),
-    catGifSrc() || null,
+    CAT_GIF_DATA_URL || null,
     focusSessionId,
   )
 }

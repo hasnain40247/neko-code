@@ -7,11 +7,26 @@
  */
 
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
+import type { BunPlugin } from "bun"
 
 const TARGET = process.env.BUILD_TARGET ?? "bun-darwin-arm64"
 const OUTFILE = process.env.BUILD_OUTFILE ?? "./dist/neko"
 
 console.log(`[build] target=${TARGET} outfile=${OUTFILE}`)
+
+const gifBase64Plugin: BunPlugin = {
+  name: "gif-base64",
+  setup(build) {
+    build.onLoad({ filter: /\.gif$/ }, async ({ path }) => {
+      const bytes = await Bun.file(path).bytes()
+      const base64 = Buffer.from(bytes).toString("base64")
+      return {
+        contents: `export default "data:image/gif;base64,${base64}"`,
+        loader: "js",
+      }
+    })
+  },
+}
 
 const result = await Bun.build({
   entrypoints: ["packages/controller/cli/src/index.ts"],
@@ -19,7 +34,7 @@ const result = await Bun.build({
     target: TARGET as any,
     outfile: OUTFILE,
   },
-  plugins: [createSolidTransformPlugin()],
+  plugins: [createSolidTransformPlugin(), gifBase64Plugin],
 })
 
 if (!result.success) {
